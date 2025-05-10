@@ -17,9 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyAlert = document.getElementById('copyAlert');
     const currentYearSpan = document.getElementById('currentYear');
     const selectedFileDiv = document.getElementById('selectedFile');
+    const removeButton = document.getElementById('removeButton');
 
     // Verify all required elements are found
-    if (!fileInput || !columnSelect || !checkButton || !newButton || !resultsSection || !resultsContainer || !copyAlert || !selectedFileDiv) {
+    if (!fileInput || !columnSelect || !checkButton || !newButton || !resultsSection || !resultsContainer || !copyAlert || !selectedFileDiv || !removeButton) {
         console.error('Required elements not found:', {
             fileInput: !!fileInput,
             columnSelect: !!columnSelect,
@@ -28,7 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsSection: !!resultsSection,
             resultsContainer: !!resultsContainer,
             copyAlert: !!copyAlert,
-            selectedFileDiv: !!selectedFileDiv
+            selectedFileDiv: !!selectedFileDiv,
+            removeButton: !!removeButton
         });
         alert('Error: Some required elements are missing. Please refresh the page and try again.');
         return;
@@ -51,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput.addEventListener('change', handleFileSelect);
     checkButton.addEventListener('click', checkDuplicates);
     newButton.addEventListener('click', resetApplication);
+    removeButton.addEventListener('click', removeDuplicates);
 
     // Add click event listener to document to remove selection
     document.addEventListener('click', (event) => {
@@ -172,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const columnIndex = parseInt(columnSelect.value);
         const range = XLSX.utils.decode_range(worksheet['!ref']);
         const values = [];
+        const rowIndices = []; // Store row indices for each value
         
         // Calculate total rows for progress
         const totalRows = range.e.r - range.s.r;
@@ -189,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: columnIndex })];
             if (cell && cell.v !== undefined) {
                 values.push(cell.v);
+                rowIndices.push(R); // Store the row index
             }
             
             // Update progress every 100 rows or at the end
@@ -201,11 +206,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Count duplicates
-        const duplicates = values.reduce((acc, value) => {
-            acc[value] = (acc[value] || 0) + 1;
-            return acc;
-        }, {});
+        // Count duplicates and store their row indices
+        const duplicates = {};
+        const duplicateRows = {};
+        
+        values.forEach((value, index) => {
+            if (!duplicates[value]) {
+                duplicates[value] = 1;
+                duplicateRows[value] = [rowIndices[index]];
+            } else {
+                duplicates[value]++;
+                duplicateRows[value].push(rowIndices[index]);
+            }
+        });
 
         // Filter only duplicates (count > 1)
         const duplicateEntries = Object.entries(duplicates)
@@ -215,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Display results
         if (duplicateEntries.length === 0) {
             resultsContainer.innerHTML = '<p class="text-center text-muted">No duplicates found in the selected column.</p>';
+            removeButton.style.display = 'none';
         } else {
             resultsContainer.innerHTML = duplicateEntries.map(([value, count], index) => `
                 <div class="duplicate-item" data-index="${index}">
@@ -225,12 +239,62 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </div>
             `).join('');
+            removeButton.style.display = 'block';
         }
+
+        // Store duplicate rows data for later use
+        window.duplicateRows = duplicateRows;
 
         // Reset button state
         resetButtonState();
         checkButton.disabled = false;
         resultsSection.style.display = 'block';
+    }
+
+    function removeDuplicates() {
+        if (!worksheet || !window.duplicateRows) return;
+
+        const columnIndex = parseInt(columnSelect.value);
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        const newData = [];
+        const rowsToKeep = new Set();
+
+        // For each duplicate value, keep only the first occurrence
+        Object.values(window.duplicateRows).forEach(rows => {
+            rowsToKeep.add(rows[0]); // Keep only the first occurrence
+        });
+
+        // Copy all rows, skipping duplicates except the first occurrence
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            if (R === range.s.r || rowsToKeep.has(R)) {
+                const row = [];
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                    row.push(cell ? cell.v : undefined);
+                }
+                newData.push(row);
+            }
+        }
+
+        // Create new worksheet with the filtered data
+        const newWorksheet = XLSX.utils.aoa_to_sheet(newData);
+        
+        // Create new workbook and save
+        const newWorkbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Sheet1");
+        
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `duplicates_removed_${timestamp}.xlsx`;
+        
+        // Save the file
+        XLSX.writeFile(newWorkbook, filename);
+        
+        // Show success message
+        alert('Duplicates have been removed and the new file has been downloaded.');
+        
+        // Reset the application
+        resetApplication();
     }
 
     function resetApplication() {
@@ -239,9 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
         columnSelect.disabled = true;
         checkButton.disabled = true;
         newButton.disabled = true;
+        removeButton.style.display = 'none';
         resultsSection.style.display = 'none';
         workbook = null;
         worksheet = null;
+        window.duplicateRows = null;
         if (selectedRow) {
             selectedRow.classList.remove('selected');
             selectedRow = null;
