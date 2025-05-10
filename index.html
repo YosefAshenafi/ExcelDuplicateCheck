@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Duplicate Checker</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Excel Duplicate Checker</h1>
+        <div class="upload-section">
+            <div class="file-input-container">
+                <input type="file" id="fileInput" accept=".xlsx, .xls" />
+                <label for="fileInput" class="file-input-label">
+                    Choose Excel File
+                </label>
+            </div>
+            <div class="column-select-container">
+                <label for="columnSelect">Select Column to Check:</label>
+                <select id="columnSelect" disabled>
+                    <option value="">Select a file first</option>
+                </select>
+            </div>
+            <button id="checkButton" disabled>Check Duplicates</button>
+        </div>
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <h2>Results</h2>
+            <div class="results-container" id="resultsContainer"></div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
