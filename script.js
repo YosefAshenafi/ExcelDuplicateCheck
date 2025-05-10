@@ -1,4 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Check if XLSX is available
+    if (typeof XLSX === 'undefined') {
+        console.error('XLSX library not loaded');
+        alert('Error: Excel processing library not loaded. Please refresh the page and try again.');
+        return;
+    }
+
+    console.log('XLSX library loaded successfully');
+
     const fileInput = document.getElementById('fileInput');
     const columnSelect = document.getElementById('columnSelect');
     const checkButton = document.getElementById('checkButton');
@@ -9,12 +18,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentYearSpan = document.getElementById('currentYear');
     const selectedFileDiv = document.getElementById('selectedFile');
 
+    // Verify all required elements are found
+    if (!fileInput || !columnSelect || !checkButton || !newButton || !resultsSection || !resultsContainer || !copyAlert || !selectedFileDiv) {
+        console.error('Required elements not found:', {
+            fileInput: !!fileInput,
+            columnSelect: !!columnSelect,
+            checkButton: !!checkButton,
+            newButton: !!newButton,
+            resultsSection: !!resultsSection,
+            resultsContainer: !!resultsContainer,
+            copyAlert: !!copyAlert,
+            selectedFileDiv: !!selectedFileDiv
+        });
+        alert('Error: Some required elements are missing. Please refresh the page and try again.');
+        return;
+    }
+
     // Set current year in footer
-    currentYearSpan.textContent = new Date().getFullYear();
+    if (currentYearSpan) {
+        currentYearSpan.textContent = new Date().getFullYear();
+    }
 
     let workbook = null;
     let worksheet = null;
     let selectedRow = null;
+
+    // Add direct click handler to file input
+    fileInput.addEventListener('click', () => {
+        console.log('File input clicked');
+    });
 
     fileInput.addEventListener('change', handleFileSelect);
     checkButton.addEventListener('click', checkDuplicates);
@@ -29,25 +61,70 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleFileSelect(event) {
+        console.log('File input change event triggered');
         const file = event.target.files[0];
-        if (!file) return;
+        if (!file) {
+            console.log('No file selected');
+            return;
+        }
+
+        console.log('File details:', {
+            name: file.name,
+            type: file.type,
+            size: file.size
+        });
+
+        // Validate file type
+        const validTypes = ['.xlsx', '.xls'];
+        const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (!validTypes.includes(fileExtension)) {
+            console.error('Invalid file type:', fileExtension);
+            alert('Please select a valid Excel file (.xlsx or .xls)');
+            fileInput.value = '';
+            selectedFileDiv.innerHTML = '';
+            return;
+        }
 
         // Show selected filename
         selectedFileDiv.innerHTML = `<i class="fas fa-file-excel me-2"></i>${file.name}`;
 
         const reader = new FileReader();
+        
         reader.onload = function(e) {
             try {
+                console.log('File read successfully, starting to process...');
                 const data = new Uint8Array(e.target.result);
+                console.log('Data array created, length:', data.length);
+                
                 workbook = XLSX.read(data, { type: 'array' });
+                console.log('Workbook created:', {
+                    sheetNames: workbook.SheetNames,
+                    sheets: Object.keys(workbook.Sheets)
+                });
+                
+                if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                    throw new Error('Invalid Excel file format');
+                }
+
                 worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                if (!worksheet || !worksheet['!ref']) {
+                    throw new Error('Empty worksheet or invalid format');
+                }
                 
                 // Get headers from the first row
                 const range = XLSX.utils.decode_range(worksheet['!ref']);
+                console.log('Worksheet range:', range);
+                
                 const headers = [];
                 for (let C = range.s.c; C <= range.e.c; ++C) {
                     const cell = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
                     if (cell && cell.v) headers.push(cell.v);
+                }
+
+                console.log('Headers found:', headers);
+
+                if (headers.length === 0) {
+                    throw new Error('No headers found in the Excel file');
                 }
 
                 // Populate column select
@@ -58,12 +135,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 columnSelect.disabled = false;
                 checkButton.disabled = false;
                 newButton.disabled = false;
+                console.log('File processing completed successfully');
             } catch (error) {
-                alert('Error reading the Excel file. Please make sure it\'s a valid Excel file.');
-                console.error(error);
+                console.error('Error processing Excel file:', error);
+                alert('Error reading the Excel file. Please make sure it\'s a valid Excel file with headers.');
                 selectedFileDiv.innerHTML = '';
+                resetApplication();
             }
         };
+
+        reader.onerror = function(error) {
+            console.error('Error reading file:', error);
+            alert('Error reading the file. Please try again.');
+            selectedFileDiv.innerHTML = '';
+            resetApplication();
+        };
+
+        console.log('Starting to read file...');
         reader.readAsArrayBuffer(file);
     }
 
